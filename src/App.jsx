@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import "./App.css";
+import Player from "./Player";
 
 function bgUrl(query) {
   if (!query) return null;
@@ -18,8 +19,16 @@ const EMPTY_FRAME = {
   elements: [],
 };
 
+const MOOD_STYLES = {
+  light:   { actionBg: "rgba(255,200,0,0.85)",  actionColor: "#000", border: "#555" },
+  neutral: { actionBg: "rgba(120,120,120,0.85)", actionColor: "#fff", border: "#444" },
+  dark:    { actionBg: "rgba(140,30,30,0.85)",   actionColor: "#fff", border: "#522" },
+  tense:   { actionBg: "rgba(180,100,20,0.85)",  actionColor: "#fff", border: "#654" },
+};
+
 function FrameCanvas({ frame }) {
   const url = frame.background ? bgUrl(frame.background) : null;
+  const mood = MOOD_STYLES[frame.mood] || MOOD_STYLES.neutral;
   return (
     <div
       style={{
@@ -29,7 +38,7 @@ function FrameCanvas({ frame }) {
         background: FALLBACK_BG,
         borderRadius: 8,
         overflow: "hidden",
-        border: "2px solid #333",
+        border: `2px solid ${mood.border}`,
       }}
     >
       {url && (
@@ -53,7 +62,7 @@ function FrameCanvas({ frame }) {
           zIndex: 1,
         }}
       >
-        {frame.shot}
+        {frame.shot}{frame.mood && frame.mood !== "neutral" ? ` · ${frame.mood}` : ""}
       </div>
 
       {frame.elements.map((el, i) => (
@@ -70,9 +79,9 @@ function FrameCanvas({ frame }) {
             userSelect: "none",
             zIndex: 1,
           }}
-          title={`${el.label || el.assetId || ""} (${el.x}, ${el.y}, ${el.size})`}
+          title={`${el.label || ""} (${el.x}, ${el.y}, ${el.size})`}
         >
-          {el.emoji || el.assetId || "❓"}
+          {el.emoji || "❓"}
         </div>
       ))}
 
@@ -99,12 +108,13 @@ function FrameCanvas({ frame }) {
             position: "absolute",
             top: 8,
             right: 8,
-            background: "rgba(255,200,0,0.85)",
-            color: "#000",
+            background: mood.actionBg,
+            color: mood.actionColor,
             fontSize: 10,
             padding: "2px 6px",
             borderRadius: 3,
             maxWidth: 200,
+            zIndex: 1,
           }}
         >
           {frame.action}
@@ -144,6 +154,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("ai");
+  const [showPlayer, setShowPlayer] = useState(false);
   const textareaRef = useRef(null);
 
   const current = frames[activeFrame] || EMPTY_FRAME;
@@ -158,10 +169,12 @@ export default function App() {
     setError("");
 
     try {
+      // Send all existing frames as context for continuity
+      const previousFrames = mode === "new" ? frames : frames.filter((_, i) => i !== activeFrame);
       const resp = await fetch("http://localhost:3001/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scene: prompt }),
+        body: JSON.stringify({ scene: prompt, previousFrames }),
       });
 
       if (!resp.ok) {
@@ -321,6 +334,13 @@ export default function App() {
           <span style={{ fontWeight: 700, fontSize: 15 }}>Storyboard</span>
           <span style={{ fontSize: 12, color: "#666" }}>Frame {activeFrame + 1} / {frames.length}</span>
           <div style={{ flex: 1 }} />
+          <button
+            onClick={() => setShowPlayer(true)}
+            disabled={frames.filter(f => f.elements.length > 0).length < 2}
+            style={{ background: frames.filter(f => f.elements.length > 0).length >= 2 ? "#4a9eff" : "#333", border: "none", color: "#fff", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}
+          >
+            Play
+          </button>
           <button onClick={() => exportCSV(frames)} style={{ background: "#2a6a2a", border: "none", color: "#fff", padding: "6px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
             Export CSV
           </button>
@@ -361,6 +381,12 @@ export default function App() {
           )}
         </div>
       </div>
+      {showPlayer && (
+        <Player
+          frames={frames.filter(f => f.elements.length > 0)}
+          onClose={() => setShowPlayer(false)}
+        />
+      )}
     </div>
   );
 }
